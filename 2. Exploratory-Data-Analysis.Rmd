@@ -1,0 +1,94 @@
+---
+title: "DA2-HW1"
+author: "Nawal Zehra Hasan"
+date: "11/23/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+Task: Model the differences in earning by age and education level.
+
+To complete this task, I used cps-earnings data set to analyze the gap between earnings by gender in the Chief Executives occupation. I also modeled a relationship between gender and level of education received by individuals.
+After this, I interpreted the results as per my model.
+
+```{r}
+#cleaning the environment
+rm ( list = ls ( ) )
+```
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(modelsummary)
+library(readr)
+library(base)
+library(cowplot)
+library(boot)
+library(estimatr)
+library(huxtable)
+library(stargazer)
+library(modelsummary)
+library(dplyr)
+library(data.table)
+library(knitr)
+```
+
+After loading the data I filtered the data by;
+-occupation: Chief Executives
+-education level: Masters or above
+-weekly working hours: 40 and above
+-weekly earnings: anything greater than zero
+-age: 35 and above
+#1.Data Work
+```{r data work}
+#Loading the data-cps-earnings data set
+df <- read_csv ( "https://osf.io/4ay9x/download" )
+
+#check the first few rows of the data set
+head ( df )
+
+#no. of women in the data set
+no_females <- count ( df [ which ( df$sex == 2 ) , ] ) #73738/149316 are women approx 49%
+
+#selecting relevant observations
+data <- df %>% filter ( occ2012 == 10, #code for chief executives
+                    grade92 >= 43, #edu. level Masters or above
+                    uhours >= 40, #working hours
+                    earnwke >= 0, #weekly earnings
+                    age >= 35 ) #35 or above years of age
+
+#no. of women in the occupation                                
+no_females <- count ( data [ which ( data$sex == 2 ) , ] ) # 211/874 females approx 24%
+
+#Creating relevant variables to the data set
+data <- data %>% mutate ( female = as.numeric ( sex == 2 ) ) %>%
+                 mutate ( h_wage = earnwke/uhours ) %>%
+                 mutate ( lnw = log ( h_wage ) ) %>%
+                 mutate ( ed_MA = as.numeric ( grade92 == 44 ),
+                          ed_Profess = as.numeric( grade92 == 45 ),
+                          ed_PhD = as.numeric ( grade92 == 46 ) )
+
+#select relevant columns for analysis
+final_data <- data %>% select(X1, earnwke, uhours, grade92, age, ind02, occ2012, female, h_wage, lnw, ed_MA, ed_Profess, ed_PhD)
+
+```
+
+
+#Exploratory Data Analysis
+```{r}
+P95 <- function(x){ quantile(x,.95,na.rm=T)}
+datasummary( earnwke ~ Mean + SD + Min + 
+               Max + Median + P95 + N , data = final_data )
+
+
+female <- final_data %>% group_by(female) %>% 
+            dplyr:: summarize(Eprice_cat2=mean(earnwke))
+final_data <-left_join(final_data,female)
+
+```
+
+
+```{r education & gender}
+
+```
+
+
