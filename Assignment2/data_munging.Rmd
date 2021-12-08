@@ -1,0 +1,74 @@
+---
+title: "Data Analysis-Assignment 2"
+  author: "Nawal Zehra Hasan"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Assignment 2 - Nawal Zehra Hasan 
+##Introduction
+For this assignment we were given the Hotels Europea Dataset [**Hotel Price dataset**](https://osf.io/p6tyr/download) with different features about the hotels that can be found here [**Hotel Features dataset**](https://osf.io/utwjs/download). By choosing one particular city, I wanted to understand how hotel ratings are associated with different features of the hotel such as distance and stars as the explanatory variables. 
+
+##Understanding the filtered data
+The table summary reveals that of the total of 667 observations 414 are highly rate(>4). The descriptive statistic tell us that of of the total of 667 observations 62% of the hotels are highly-rated. Besides, they are 2.75 miles away from city center on average, and they have 3.48 stars on average. These highly rated hotels are on average 1.58 miles away from the city center with  3.52 stars on average. 
+
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+# Clean Environment
+rm(list=ls())
+# Import libraries
+library(tidyverse)
+library(haven)
+library(data.table)
+library(rms)
+library(lspline)
+library(huxtable)
+library(modelsummary)
+install.packages("pscl")
+library(pscl)
+library(esquisse)
+library(ggplot2)
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+# Load hotels Europe data sets
+hotels_price <- read_csv('https://osf.io/p6tyr/download')
+hotels_features <- read_csv("https://osf.io/utwjs/download")
+
+# Join both by hotel_id
+data <- left_join(hotels_price, hotels_features, by = "hotel_id")
+rm(hotels_price,hotels_features)
+
+#filter by year and city
+unique(data$city_actual)
+unique(data$year)
+
+
+# Get the needed sample: hotels in Berlin
+Amsterdam <- data %>% 
+                filter(accommodation_type=="Hotel") %>%
+                filter( year == 2018) %>% 
+                filter(city_actual=="Amsterdam") %>% 
+                filter(!is.na(rating), !is.na(stars), !is.na(distance))
+
+
+#creating binary variable for ratings
+Amsterdam <- Amsterdam %>% 
+                mutate(highly_rated = ifelse(Amsterdam$rating >= 4, 1, 0))
+
+Amsterdam$log_price <- log(Amsterdam$price)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Summary statistics on price and log of price
+P95 <- function(x){ quantile(x,.95,na.rm=T)}
+datasummary( highly_rated + distance + stars ~ Mean + SD + Min + Max + Median + P95 + N , data = Amsterdam, title = "Summary Statistics" )
+
+#checking highly rated number of hotels
+table(Amsterdam$highly_rated)
+```
+
