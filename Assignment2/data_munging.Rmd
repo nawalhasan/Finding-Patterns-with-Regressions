@@ -47,7 +47,7 @@ unique(data$city_actual)
 unique(data$year)
 
 
-# Get the needed sample: hotels in Berlin
+# Get the needed sample: hotels in Amsterdam
 Amsterdam <- data %>% 
                 filter(accommodation_type=="Hotel") %>%
                 filter( year == 2018) %>% 
