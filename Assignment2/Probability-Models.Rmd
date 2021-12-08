@@ -1,0 +1,125 @@
+---
+title: "Data Analysis-Assignment 2"
+  author: "Nawal Zehra Hasan"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Assignment 2 - Nawal Zehra Hasan 
+##Introduction
+For this assignment we were given the Hotels Europea Dataset [**Hotel Price dataset**](https://osf.io/p6tyr/download) with different features about the hotels that can be found here [**Hotel Features dataset**](https://osf.io/utwjs/download). By choosing one particular city, I wanted to understand how hotel ratings are associated with different features of the hotel such as distance and stars as the explanatory variables. 
+
+##Understanding the filtered data
+The table summary reveals that of the total of 667 observations 414 are highly rate(>4). The descriptive statistic tell us that of of the total of 667 observations 62% of the hotels are highly-rated. Besides, they are 2.75 miles away from city center on average, and they have 3.48 stars on average. These highly rated hotels are on average 1.58 miles away from the city center with  3.52 stars on average. 
+
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+# Clean Environment
+rm(list=ls())
+# Import libraries
+library(tidyverse)
+library(haven)
+library(data.table)
+library(rms)
+library(lspline)
+library(huxtable)
+library(modelsummary)
+install.packages("pscl")
+library(pscl)
+library(esquisse)
+library(ggplot2)
+library(fixest)
+library(mfx)
+```
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+# Load hotels Europe data sets
+hotels_price <- read_csv ( "https://osf.io/p6tyr/download" )
+hotels_features <- read_csv ( "https://osf.io/utwjs/download" )
+
+# Join both by hotel_id
+data <- left_join(hotels_price, hotels_features, by = "hotel_id" ) 
+rm ( hotels_price , hotels_features )
+
+#filter by year and city
+unique ( data$city_actual )
+unique ( data$year )
+
+
+# Get the needed sample: hotels in Berlin
+Amsterdam <- data %>% 
+                filter (accommodation_type == "Hotel" ) %>%
+                filter ( year == 2018 ) %>% 
+                filter ( city_actual=="Amsterdam" ) %>% 
+                filter ( !is.na ( rating ) , !is.na ( stars ), !is.na ( distance ) )
+
+
+#creating binary variable for ratings
+Amsterdam <- Amsterdam %>% 
+                mutate ( highly_rated = ifelse(Amsterdam$rating >= 4, 1, 0 ) )
+
+Amsterdam$log_price <- log ( Amsterdam$price )
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Summary statistics on price and log of price
+P95 <- function ( x ) { quantile ( x,.95,na.rm=T ) }
+datasummary( highly_rated + distance + stars ~ Mean + SD + Min + Max + Median + P95 + N , data = Amsterdam, title = "Summary Statistics" )
+
+#checking highly rated number of hotels
+table ( Amsterdam$highly_rated )
+```
+```{r,  echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+#checking lowess for each independent variable
+plot_dist <- ggplot(Amsterdam, aes(x=distance, y=highly_rated))+
+  geom_smooth(formula = y~x, method = "loess")
+
+plot_stars <- ggplot(Amsterdam, aes(x = stars, y = highly_rated ) ) +
+  geom_smooth ( formula = y ~ x, method = "loess")
+
+plot_price <- ggplot (Amsterdam, aes ( x = log ( price ), y = highly_rated ) ) +
+  geom_smooth ( formula = y ~ x, method = "loess")
+```
+
+```{r, echo=FALSE, include=FALSE}
+# Model 1:  LPM
+lpm <- feols(highly_rated ~ lspline(distance,c(0.75, 3.5))  + stars + log_price , data=Amsterdam, vcov = "hetero")
+Amsterdam$pred_lpm <- predict(lpm)
+summary(Amsterdam$pred_lpm)
+
+#I used the logit/probit models as the summarry statistics for LPM reveal that probability is > 1. This is unfit for predictions.
+
+# Model 2: Logit
+#logit coefficients
+logit <- glm(highly_rated ~ lspline(distance,c(0.75, 3.5))  + stars + log_price , data=Amsterdam, family='binomial'(link = "logit"))
+# Predicted probabilities 
+Amsterdam$pred_logit <- predict.glm(logit, type="response")
+# Marginal Differences
+logit_marg <- logitmfx( highly_rated ~ lspline(distance,c(0.75, 3.5))  + stars + log_price , data=Amsterdam, atmean=F, robust = T)
+
+
+# Model 3: Probit
+#probit coefficients
+probit <- glm(highly_rated ~  lspline(distance,c(0.75, 3.5))  + stars + log_price , data=Amsterdam, family=binomial(link="probit"))
+# predicted probabilities 
+Amsterdam$pred_probit<- predict.glm(probit, type="response") 
+summary(Amsterdam$pred_probit)
+# Marginal Differences
+probit_marg <- probitmfx(highly_rated ~  lspline(distance,c(0.75, 3.5))  + stars + log_price , data=Amsterdam, atmean=F)
+```
+
+```{r}
+
+pmodels <- list(lpm, logit, logit_marg, probit, probit_marg)
+msummary( pmodels ,
+          fmt="%.3f",
+          gof_omit = 'DF|Deviance|Log.Lik.|F|R2 Adj.|AIC|BIC|R2|PseudoR2|Std.Errors',
+          stars=c('*' = .05, '**' = .01),
+          title = "Probability of Highly Rated Hotels by Distance and Stars- LPM, Logit & probit MODELS"
+          )
+```
+
