@@ -1,0 +1,424 @@
+---
+title: "Cosumer Vehicle Choice - Regression Analysis"
+author: "Nawal Zehra Hasan"
+date: "12/22/2021"
+output:
+  pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r echo = FALSE, message = FALSE, include = FALSE}
+#cleaning the environment
+rm(list=ls())
+
+#loading relevant libraries
+library(tidyverse)
+library(dplyr)
+library(kableExtra)
+library(modelsummary)
+library(DataExplorer)
+#install.packages("fastDummies")
+library('fastDummies')
+library(data.table)
+library(lspline)
+library(huxtable)
+library(ggthemes)
+library(estimatr)
+```
+## Introduction
+
+This project is a regression analysis on data about consumer vehicle choice model developed by Oak Ridge National Laboratory for US EPA. I am investigating the relationship between price and sales for the vehicles. To add more depth to my analysis, I have added a few control variables;MPG, EPA class and footprint. As an analyst I am given the task to understand if sales of a vehicle are impacted by the price and some other explanatory variables such as footprint, miles per gallon and the EPA_class. This is crucial to understand consumer choice and can also be further used for making predictions about sales for future vehicles. We can also make generalizations about vehicle sales in USA in the year 2008 with findings from our data.
+
+### Motivation
+
+When agencies such as the US Environmental Protection Agency (EPA) establish greenhouse gas emissions standards for vehicles, understanding purchases due to changes in fuel economy and prices provides insight into regulatory impacts. I will use this data set to learn about the correlation(if any) between prices and sales for vehicles. Apart from prices, I will incorporate Miles Per Gallon(MPG), fleet type, EPA class and footprint as my control variables to uncover patterns of association between them and whether the sales of a vehicle is impacted by these variables, apart from price. I will be using different models used in Regression Analysis to complete my task and evaluate results. 
+
+### Data
+
+The data set is part a trilogy of data sets for three different years; 2008, 2010 and 2016. For the purpose of my analysis, I have chosen the base data set which belongs to the year 2008, to which further details changes were added associated with 2010 vehicles(for predictive analysis). I cannot make statements how representative the sample is, as it depends on the method of data collection & this is a secondary data source. However, by looking at the data I can see that it includes several manufacturers and models as well as EPA_class which includes wagons, cars, trucks and other vehicle types. Hence, there is variety in the data set. The data set is available [**here**](https://data.world/us-epa-gov/7b86e2b1-e3d4-4759-b464-9bb631cb3f6c/workspace/file?filename=cvcm-input-testrun02-0p-04302014-xls-2.xls)
+
+### Research Question
+
+Is there a significant relationship between sales and price of vehicle? Does the relationship vary depending on other factors discussed above?
+
+
+```{r echo = FALSE, message = FALSE, include = FALSE}
+
+#importing data
+df <- read_csv('https://raw.githubusercontent.com/nawalhasan/DA2--Regression_Analysis/main/TermProject/Vehicles_2008.csv')
+
+head(df)
+```
+## Exploratory Data Analysis
+
+### Understanding the data
+
+Below is the list of shortlisted variables and the reasons behind their selection
+
+1. **Sales**: Sales of the vehicle according to the price for it and also different confounders that impact price. This is the dependent variable, against which all other variables will be regressed. What are the possible reasons for a vehicle's sales to be higher or lower?
+2. **Price**: Gives information regarding the vehicles price by model type and other factors
+3. **EPA_class**: This is the type of vehicle ranging from SUV's to compact vehicles so see sales difference by size. Does the size of a vehicle have an impact on the sales of a vehicle? Considering USA, where there is no public transport, do people prefer purchasing bigger vehicles?
+4. **footprint**: the amount of CO2 emitted by a vehicle annually, measured in tonnes, and its relationship with the sales of a car. Does higher carbon footprint hinder customers from purchasing a particular model?
+5. **Miles_per_gallon**: Distance traveled by a vehicle per gallon of fuel can have a significant relationship with sales of a car. Does that stand correct for our data set?
+
+### Data Munging
+
+I begin my analysis by including only the variables we have shortlisted above into a data-set for consistency. The trends that seem most interesting to us for further exploration in assessing what impacts sales of vehicles are explored in detail. My data has no missing values and has a total of 524 observations. *figure 1* gives an overview of the data set. We have no missing observations in our data and 25% of our variables are discrete while 75% are continuous. I have renamed a few variables and also rounded off sales, footprint and MPG to 2 decimals.I have also selected only those variables that are relevant for my study. EPA_class which is a categorical variable in our data set needs to be coded as dummy variables. After checking how vehicles are categorized by vehicle type I have coded these as dummy variables to be further used in regression models. 
+
+### Descriptive Statistics
+
+The summary statistics reveal an extreme value of price $1734000. I decided to keep this as an extreme x value to see why the price of this vehicle is so high. Although, it could be a measurement error and may attenuize our slope coefficient. The summary statistics also show that average price of a vehicle in my data set is $51,651. This can also be higher because of the extreme value present in our data.An average vehicle in our data set has a fuel economy on average of about 24.68 miles per gallon. 
+
+I checked the distribution of some variables including price. As price gave a right skewed distribution I chose to take the log of prices to give a close to normal distribution as depicted by *figure 4*. We can also observe that the distribution of sales variable is very close to normal if taken in log terms as shown in *figure 6*. Hence, we add another variable with log of sales. Both price and sales cannot be negative so transforming them was a possibility. I did not transform footprint and miles per gallon and left them in their original form. Next, I used lowess as a method for non parametric regression to check the association between price and sales of vehicles. 
+
+
+```{r echo = FALSE,  message = FALSE, include = FALSE}
+#data munging
+#renaming columns
+df <- df %>%
+  rename ( vehicle_id = `veh id`,
+           EPA_class = `EPA class`,
+           price = `baseline price`,
+           miles_per_gallon = `baseline mpg`,
+           fleet_type = `fleet type`,
+           sales = `baseline sales` )
+
+
+#selecting relevant columns
+vehicle_sales <- df[1:12]
+
+#check data type for all variables
+str(vehicle_sales)
+
+#round of numeric variables to 2 decimals
+vehicle_sales <- vehicle_sales %>% 
+ mutate(across(c(footprint, sales, miles_per_gallon), ~ round(., 2)))
+
+#checking vehicle types 
+table(vehicle_sales$EPA_class)
+
+#summary statistics for selected variables
+summary(vehicle_sales)
+
+#Using fastDummy pacakage I added dummy columns for EPA_class
+vehicle_sales <- dummy_cols(vehicle_sales, select_columns = 'EPA_class')
+
+#rename dummy variables for readability
+vehicle_sales <-  
+  rename(vehicle_sales,
+    "comp.cars" = `EPA_class_COMPACT CARS`,
+    "lar.cars" = `EPA_class_LARGE CARS`,
+    "medium_cars" = `EPA_class_MIDSIZE CARS`,
+    "med_st_wagon" = `EPA_class_MIDSIZE STATION WAGONS`,
+    "minivan" = EPA_class_MINIVAN,
+    "pickup_truck" = `EPA_class_SMALL PICKUP TRUCKS`,
+    "stat.wag" = `EPA_class_SMALL STATION WAGONS`,
+    "st_pickup_truck" = `EPA_class_STANDARD PICKUP TRUCKS`,
+    "subcomp.cars" = `EPA_class_SUBCOMPACT CARS`,
+    "SUV" = `EPA_class_SUV`,
+    "two.seatr" = `EPA_class_TWO SEATERS`,
+    "vans" = `EPA_class_VANS` )
+```
+
+```{r, include=FALSE}
+#Introduction to the data
+v1 <- plot_intro(vehicle_sales, 
+           title ="Data Overview", 
+           ggtheme =theme_bw(),
+           theme_config=theme(legend.position="bottom"))
+
+#total number of observations
+count(unique(vehicle_sales)) #524
+```
+
+```{r echo = FALSE,  message = FALSE, include = FALSE}
+#type of vehicle by count
+v2 <- ggplot(vehicle_sales, aes(x=EPA_class, fill=EPA_class)) +
+  geom_histogram(stat="count") +
+  theme(legend.position = "none",plot.title = element_text(hjust = 0.5)) +
+  theme( axis.text.x = element_text(angle = 45, vjust = 1, size = 8, hjust = 1)) +
+  ggtitle("EPA_class - Vehicle type by count")
+v2
+```
+
+```{r, echo = FALSE, include=FALSE}
+#to see average sales of vehicles by amount of footprint
+#add new column with binary footprint variable
+vehicle_sales <- vehicle_sales %>% mutate( footprint1 = as.numeric( footprint >= 44 ) )
+
+# Add the mean of the prices for both categories
+footprint1 <- vehicle_sales %>% group_by(footprint1) %>% 
+            dplyr:: summarize(Esales_cat2=mean(sales))
+
+#join to create df
+vehicle_sales <-left_join(vehicle_sales,footprint1)
+
+#Recode it to a factor
+vehicle_sales <- vehicle_sales %>%  mutate(footprint2 = 
+                               recode(footprint1,`0` = "Footprint(<44)",`1` = "Footprint(>=44)"))
+
+#footprint in tonnes categorized by mean sales
+# Plot the two categories
+v3 <- ggplot(data = vehicle_sales) +
+  geom_point(aes(x = footprint2, y = Esales_cat2), 
+             size = 5, shape = 21, alpha = 0.4, fill = 'blue', na.rm=T) +
+  geom_text(aes(x = footprint2, y = Esales_cat2, label = round(Esales_cat2)), 
+            hjust = -0.8, vjust = 0, color = "black", size = 3) +
+  labs(x = "Footprint Categories", y = "Average Sales") 
+v3
+```
+
+**Table 1 - Descriptive Statistics**
+```{r, echo = FALSE}
+#Descriptive Statistics of important variables
+P95 <- function(x){quantile(x,0.95,na.rm=T)}
+P05 <- function(x){quantile(x,0.05,na.rm=T)}
+t1 <- datasummary ( ( price ) +
+            ( miles_per_gallon ) +
+            ( sales ) +
+            ( footprint ) ~
+             Mean + Median + SD + Min + Max + P05 + P95 , 
+             data = df ,
+             title = 'Descriptive statistics' ) %>% 
+      kable_styling ( latex_options = c ( "HOLD_position","scale_down" ) )
+
+t1
+```
+
+
+```{r, echo = FALSE, include=FALSE}
+#checking the distribution of variables
+#distribution price
+dist1 <- ggplot(data = vehicle_sales, aes(x = price)) + 
+      geom_density(colour="blue") 
+
+#since price is right skewed I will check ln(price)
+dist2 <- ggplot(data = vehicle_sales, aes(x = log(price))) + 
+      geom_density(colour="blue")
+  
+     
+#I will be using ln(price) instead of price as it gives a near normal distribution
+vehicle_sales$lnprice <- log(vehicle_sales$price)
+
+#distribution of sales
+dist3 <- ggplot(data = vehicle_sales, aes(x = sales)) + 
+      geom_density(colour="darkcyan") 
+
+#since price is right skewed I will check ln(sales)
+dist4 <- ggplot(data = vehicle_sales, aes(x = log(sales))) + 
+      geom_density(colour="darkcyan")
+
+#ln(sales) instead of sales as it gives a near normal distribution
+vehicle_sales$lnsales <- log(vehicle_sales$sales)
+
+#did not transform footprint and miles per gallon as they were not extremely left or right skewed
+dist5 <- ggplot(data = vehicle_sales, aes(x = footprint)) + 
+      geom_density()
+dist6 <- ggplot(data = vehicle_sales, aes(x = miles_per_gallon)) + 
+      geom_density()
+```
+
+### Multicollinearity
+Before delving into the regressions, I used the correlation matrix to check whether independent variables in our analysis are correlated as shown in *figure 2*. This correlation is a problem as independent variables ought to be independent.This will impact our regression coefficient as it will show a biased mean change in the sales for a higher or lower price change. The heat map shows the relationship among all the variables that I have subset. lnsales & footprint have no significant relation whilst ln(price) and ln(sales) are negatively correlated as we saw above with the lowess regression. lnprice and footprint are negatively correlated, but it is not a strong correlation. Footprint and MPG are strongly negatively correlated. I have decided to drop miles per gallon as an explanatory variable as the footprint is an important variable in our data and analysis. 
+
+```{r, , echo = FALSE, include=FALSE}
+
+corr_df <- subset(vehicle_sales,select =c(lnsales,lnprice,footprint,miles_per_gallon, medium_cars,st_pickup_truck,vans,med_st_wagon))
+
+cT <- round( cor( corr_df , use = "complete.obs") , 2 )
+# create a lower triangular matrix
+cT[ upper.tri( cT ) ] <- NA 
+# change to tibble format
+melted_cormat <- melt( cT , na.rm = TRUE)
+# create a heat map
+ cor_matrix <- ggplot( data = melted_cormat, aes( Var2 , Var1 , fill = value ) )+
+  geom_tile( color = "white" ) +
+  scale_fill_gradient2(low = "lightblue", high = "deepskyblue", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Correlation") +
+  theme( axis.text.x = element_text(angle = 45, vjust = 1, 
+                                    size = 10, hjust = 1))+
+  labs(y="",x="")+
+  coord_fixed()+
+  theme(plot.title = element_text(hjust = 0.5))+
+  ggtitle("Corelation Matrix") 
+   
+cor_matrix
+
+```
+
+## Non-Parametric Regressions
+With the help of a nonparametric regression such as lowess, I wanted to uncover the pattern of association between sales and the explanatory variables including price, footprint & EPA_class of the vehicle. We can see in *figure 7* that ln(sales) when regressed on ln(price) gives a negative slope in general. This was also visible in the correlation matrix. Using three types of transformations with log-log, level-log and log-level, we can observe that the most insightful of these is the log-log regression where we compare in relative terms as represented by *figures 7-9*. Regressing log sales on footprint we can see from *figure 10* that the slope is changing at approx 44 footprint so I chose to use spline with one knot show showing the change in slope.
+
+```{r, echo = FALSE, include=FALSE}
+#log-log lowess- sales and prices
+#non-parametric regression for sales and prices
+np1 <- ggplot(data = vehicle_sales, aes(x = lnprice, y = lnsales)) +
+  geom_point() +
+  labs(x = "ln(price)",y = "ln(sales)") +
+  geom_smooth(method='loess', colour = "blue") + 
+  ggtitle("Log Price VS Log Sales") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#log-level lowess- ln(sales) and prices
+np2 <- ggplot(data = vehicle_sales, aes(x = price, y = lnsales)) +
+  geom_point() +
+  labs(x = "price",y = "ln(sales)") + 
+  geom_smooth(method="loess", colour = "blue") + 
+  ggtitle("Price VS Log Sales") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#level-log lowess- sales and ln(prices)
+np3 <- ggplot(data = vehicle_sales, aes(x = lnprice, y = sales)) +
+  geom_point() +
+  labs(x = "ln(price)",y = "sales") + 
+  geom_smooth(method="loess", colour = "blue") + 
+  ggtitle("Log Price VS Sales") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+#regress ln(sales) against footprint
+np4 <- ggplot(data = vehicle_sales, aes(x = footprint, y = lnsales)) +
+  geom_point() +
+  labs(x = "footprint",y = "ln(sales)") + 
+  geom_smooth(method="loess", colour = "darkcyan") + 
+  ggtitle("Footprint VS Log Sales") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+## Parametric Regressions
+To model the regression I have chosen robust regression models as we can see from *table 1* that we have a few extra values in sales and price and since sales is our dependent variable we must be cautious in dropping these values as we ought to see the change in sales through our analysis and extreme values can be useful. Hence, lm robust seemed like a reasonable choice to model regressions. I started off with a linear regression, modeling ln(sales) against ln(price). Then I added more variables, one by one, to the right hand side to see if the beta coefficient & R- squared change. I also added interactions terms with footprint and EPA_class, within which I kept SUV's as my reference category for comparison purposes. This was a conscious choice as one way to choose a reference category is to see if it has more observations that others & in our case, SUV's had 160 observations so I chose that. Another important decision taken was to select a few types of vehicles as our data set has vehicles ranging from small to large for cars to trucks. Hence, for narrowing down my analysis, I selected all midsize vehicles; cars, vans, trucks, station wagons. 
+
+### Interpretation & Analysis
+The regression table gives a consolidated summary of our regression models. The intercept and more importantly the slop coefficient helps understand how two variables are related and to what extent does this relationship change by adding more explanatory variables. I will also analyze the effect on adding confounders on R squared as it is an important element that shows how much of the variance in sales is explained by price and which model fits the data best. Another important statistic is whether the coefficient is statistically significant so we can reject the null hypothesis that the dependent and independent variable are not correlated. I will also conduct statistical inference by evaluating confidence intervals which enable us to make generalizations about the population which includes all the vehicle sales in 2008 in USA.
+
+### Regression Models
+$$ln(sales):=\beta_0+\beta_1ln(price) $$
+1. **Model_1**: shows relative change in ln(sales) with a change in ln(price). I am analyzing whether sales and price have a significant relationship. In this case our null hypothesis will be that sales and price have no significant relationship i.e. our Beta coefficient is zero. While the alternate hypothesis that we would like to test is that sales and price have a significant relationship hence beta coefficient will not be zero.This is a simple linear regression model between one right hand side variable. The intercept shows that when ln(price) is zero, ln(sales) is 27.47$ on average. This does not make sense as sales ought to zero as price is zero. The slop coefficient shows that as price go higher by 10% sales go down by 18% on average. The confidence interval [-1.593, -1.941] can give us an understanding of the general population represented by our sample which is all the cars in USA sold in 2008. The sales of these cars will on average reduce between 16%-19% if prices go higher by 10%. The slope coefficient is also statistically significant at p < 0.001 so we can safely reject the null hypothesis in favor of our alternative and claim that price and sales of the vehicles have a significant relationship.
+
+$$ln(sales):=\beta_0+\beta_1ln(price)+\beta_2(footprint <= 44)+\beta_3(footprint > 44) $$
+2. **Model_2**: This model incorporates piece wise linear spline with one knot on the footprint. Now, I have two right hand side variables. The average sales of a vehicle given the footprint is less than is approximately 24070, while that with a footprint higher than 44 is 24982 as shown in *figure 12*. The slope coefficient of ln(price) slightly changes with the addition of the new variable i.e. footprint. The slope coefficient for footprint < 44 explains that with price held constant, among vehicles with < 44 footprint, ln(sales) is 3.35% higher on average with 10% higher footprint. However, the slope coefficient for vehicles with > 44 tonnes footprint, we can see that ln(sales) reduce 0.24% as carbon footprint of car increases by 10 tonnes. This is also shown in *figure 10*. The slope coefficient of footprint < 44 is significant at p < 0.001, whereas the slope coefficient of footprint > 44 tonnes is significant at  p < 0.05. Hence, we need less proof to support the alternative hypothesis that footprint & sales have a significant relationship.
+
+$$ln(sales):=\beta_0+\beta_1ln(price)+\beta_2footprint+\beta_3cars+\beta_4truck+\beta_5wagon+\beta_6vans $$
+3. **Model_3**: For this model, I have added dummy variables for types of vehicles which is EPA_class and I have also used footprint in its original form i.e. without splines for the ease of interpretation. Keeping SUV as base for 2 reasons; a) SUV are usually high powered as compared to all other types of vehicles. b) The number of observations for SUV is highest in our data set as shown in *figure 11*. With all other factors held constant, as footprint increases my 1 tonne the ln(sales) of a vehicle is higher by 7.3% on average. The slope coefficient for price is quite small as compared to model 1 and model 2 so we can say that type of vehicle is a confounder. We can also see that the coefficient for cars is positive while for the rest of the types of vehicles it is negative. 
+
+4. **Model_4**:
+
+
+```{r, echo = FALSE, include=FALSE}
+#simple linear regression regressing ln(sales) on ln(price)
+reg1 <- lm_robust(lnsales ~ lnprice, data = vehicle_sales, se_type = "HC1")
+
+summary(reg1)
+
+#multiple linear regression with ln(price) and footprint as explanatory variables
+reg2 <- lm_robust(lnsales ~ lnprice + lspline(footprint,44) , data = vehicle_sales, se_type = "HC1" )
+
+summary(reg2)
+
+#multiple linear regression with ln(price), footprint & EPA_class as explanatory variables
+reg3 <- lm_robust(lnsales ~ lnprice + footprint + medium_cars + st_pickup_truck + vans + med_st_wagon, data =vehicle_sales, se_type = "HC1" )
+
+summary(reg3)
+
+#multiple linear regression with ln(price), footprint * interaction of footprint$EPA_class. Reference term being SUV as that has the highest number of vehicles in our data set.
+reg4 <- lm_robust(lnsales ~ lnprice + footprint +  medium_cars + st_pickup_truck + vans + med_st_wagon + footprint*medium_cars + footprint*st_pickup_truck + footprint*vans + footprint*med_st_wagon, data = vehicle_sales, se_type = "HC1" )
+
+summary(reg4)
+
+#combining regression models for the table
+vehicle_regs <- huxreg("Model_1" = reg1, "Model_2" =reg2, "Model_3" =reg3, "Model_4" = reg4, statistics = c(N="nobs", R2 = "r.squared"),stars = c(`****` = 0.001, `***` = 0.01, `**` = 0.05, `*` = 0.1 ),borders = 0.4, outer_borders = 0.8, number_format = "%.3f", align = ".", coefs = c("Intercept"= "(Intercept)", "Footprint<44" = "lspline(footprint, 44)1", "Footprint>=44" = "lspline(footprint, 44)2", "Footprint" = "footprint",
+                    "Cars" = "medium_cars",
+                    "Trucks" = "st_pickup_truck",
+                    "Vans" = "vans",
+                    "Wagon" = "med_st_wagon",
+                    "Footprint:Car" ="footprint:medium_cars",
+                    "Footprint:Truck" = "footprint:st_pickup_truck",
+                    "Footprint:Van" =   "footprint:vans",
+                    "Footprint:Wagon" =  "footprint:med_st_wagon"))
+                                                                                                  
+#format table, add title & color
+vehicle_regs <- vehicle_regs %>% 
+      map_background_color(-1, -1, by_regex(
+        "\\*" = "lightblue")) %>% 
+      set_italic(final(1), 1) %>% 
+      set_caption("Regression table of Consumer Choice Model Vehicles")
+
+vehicle_regs
+```
+## Summary
+
+
+## Conclusion
+In conclusion, 
+
+For testing external validity, the sample collected for the years 2010 and 2016 can be used to run similar regression and test the results. This different setting of a different period of time can enable us to make generalizations whether our results stand correct for the population represented by the data using different data sets from 2010 and 2016. 
+
+
+\newpage
+### **APPENDIX**
+
+**Figure 1 - Data Overview**
+```{r, echo=FALSE,fig.height=3, fig.width=6, fig.align='center'}
+v1
+```
+
+**Figure 2- Correlation Heat Map**
+```{r, echo=FALSE,fig.height=5, fig.width=7,  fig.align='center' }
+cor_matrix
+```
+
+\newpage
+**Figure 3 - Distribution of Price**
+```{r, echo=FALSE, fig.height=2, fig.width=8, fig.align='left'}
+dist1
+```
+
+**Figure 4 - Distribution of Price with ln(price)**
+```{r, echo=FALSE,fig.height=2, fig.width=8,  fig.align='right'}
+dist2
+```
+**Figure 5 - Distribution of Sales**
+```{r, echo=FALSE,fig.height=2, fig.width=8,  fig.align='right'}
+dist3
+```
+
+**Figure 6 - Distribution of Sales with ln(sales)**
+```{r, echo=FALSE,fig.height=2, fig.width=8,  fig.align='right'}
+dist4
+```
+
+\newpage
+**Figure 7 - Lowess Regression with scatter plot - ln(price) & ln(sales)**
+```{r, echo=FALSE,fig.height=2, fig.width=8,  fig.align='right'}
+np1
+```
+
+**Figure 8 - Lowess Regression with scatter plot - price & ln(sales)**
+```{r, echo=FALSE,fig.height=2, fig.width=8,  fig.align='center'}
+np2
+```
+
+**Figure 9 - Lowess Regression with scatter plot - ln(price) & sales**
+```{r, echo=FALSE,fig.height=2, fig.width=8,  fig.align='center'}
+np3
+```
+
+**Figure 10 - Lowess Regression with scatter plot - footprint & lnsales**
+```{r, echo=FALSE,fig.height=2, fig.width=8,  fig.align='center'}
+np4
+```
+**Figure 11 - EPA_class - Types of Vehicles**
+```{r echo=FALSE, fig.height=4, fig.width=8, fig.align='center'}
+v2
+```
+**Figure 12 - Average Sales by footprint size**
+```{r echo=FALSE, fig.height=4, fig.width=8,  fig.align='center'}
+v3
+```
+
+```{r, echo=FALSE,  fig.align='center'}
+vehicle_regs
+```
