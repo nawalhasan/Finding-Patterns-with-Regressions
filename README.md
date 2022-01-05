@@ -1,2 +1,2 @@
 # DA2-Assignments
-This repository contains the assignments and projects for DA2
+This repository is dedicated to all the assignments for Data Analysis 2: Regression Analysis.
