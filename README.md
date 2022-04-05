@@ -16,7 +16,7 @@ measurement errors)
 
 Please click on the hyperlink to find the code and reports created for the assignments.
 
-**1.Hourly Wage rate of Chief Executives by gender**: [Assignment 1](https://github.com/nawalhasan/Finding-Patterns-with-Regressions/tree/main/Assignment1)
+**1. Hourly Wage rate of Chief Executives by gender**: [Assignment 1](https://github.com/nawalhasan/Finding-Patterns-with-Regressions/tree/main/Assignment1)
 
 **2. Hotel Price differences by features**: [Assignment 2](https://github.com/nawalhasan/Finding-Patterns-with-Regressions/blob/main/Assignment2/Assignment2-final.pdf)
 
